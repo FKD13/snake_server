@@ -1,0 +1,22 @@
+{application, snake_server,
+  [{description, "An OTP application"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {snake_server_app, []}},
+    {applications,
+      [kernel,
+        stdlib
+      ]},
+    {env, []},
+    {modules, [
+      snake_server_app,
+      snake_server_sup,
+      client_sup,
+      game_server,
+      connection_server,
+      client_server
+    ]},
+
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+  ]}.
