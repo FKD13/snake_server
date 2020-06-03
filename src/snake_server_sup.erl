@@ -1,8 +1,3 @@
-%%%-------------------------------------------------------------------
-%% @doc snake_server top level supervisor.
-%% @end
-%%%-------------------------------------------------------------------
-
 -module(snake_server_sup).
 
 -behaviour(supervisor).
@@ -15,10 +10,6 @@
 
 start_link() ->
   supervisor:start_link({local, ?SERVER}, ?MODULE, []).
-
-%% sup_flags() = #{strategy => strategy(),         % optional
-%%                 intensity => non_neg_integer(), % optional
-%%                 period => pos_integer()}        % optional
 
 child_spec() ->
   [
@@ -33,13 +24,7 @@ child_spec() ->
       restart => permanent,
       shutdown => infinity,
       type => worker,
-      modules => [game_server]}%,
-    %#{id => connection_server,
-    %  start => {connection_server, start_link, [self()]},
-    %  restart => permanent,
-    %  shutdown => infinity,
-    %  type => worker,
-    %  modules => [connection_server]}
+      modules => [game_server]}
   ].
 
 init([]) ->
@@ -56,4 +41,3 @@ get_child(Id) ->
   Child.
 
 %% internal functions
-
