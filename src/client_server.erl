@@ -27,7 +27,7 @@ init([ListenSocket]) ->
   {ok, #client_server_state{listenSocket = ListenSocket}}.
 
 %% Check if the head of the snake collides with an apple.
-handle_call({check_collide, Points}, _, State = #client_server_state{snake = [Head|_]}) ->
+handle_call({check_collide, Points}, _, State = #client_server_state{snake = [Head | _]}) ->
   Collide = lists:filter(fun(A) -> A =:= Head end, Points),
   {reply, Collide, State};
 
@@ -41,16 +41,20 @@ handle_call(grow, _, State = #client_server_state{direction = D, snake = S}) ->
 handle_call(move, _, State = #client_server_state{snake = []}) -> {reply, ok, State};
 handle_call(move, _, State = #client_server_state{direction = D, snake = S}) ->
   Snake = grow(S, D),
-  {reply, ok, State#client_server_state{snake = droplast(Snake)}};
+  {reply, ok, State#client_server_state{snake = utils:droplast(Snake)}};
+
+% get the current snake
+handle_call(snake, _, State = #client_server_state{snake = S}) ->
+  {reply, utils:coords_to_list(S), State};
 
 %% Generic catchall
 handle_call(_Request, _From, State = #client_server_state{}) ->
   {reply, ok, State}.
 
 %% Push update to clients
-handle_cast(update, State = #client_server_state{socket = undefined}) -> {noreply, State};
-handle_cast(update, State = #client_server_state{socket = S, snake = Snake}) ->
-  gen_tcp:send(S, jsone:encode(lists:map(fun({X, Y}) -> [X, Y] end, Snake))),
+handle_cast({update, _}, State = #client_server_state{socket = undefined}) -> {noreply, State};
+handle_cast({update, Data}, State = #client_server_state{socket = S, snake = Snake}) ->
+  gen_tcp:send(S, Data),
   {noreply, State};
 
 handle_cast(accept, State = #client_server_state{socket = undefined}) ->
@@ -104,9 +108,6 @@ listen(Socket) ->
   ok = inet:setopts(Socket, [{active, once}]),
   ok.
 
-droplast([]) -> [];
-droplast(A) -> lists:droplast(A).
-
 grow([{X, Y} | Tail], Direction) ->
   Head =
     case Direction of
@@ -115,4 +116,4 @@ grow([{X, Y} | Tail], Direction) ->
       south -> {X, Y + 1};
       west -> {X - 1, Y}
     end,
-  [Head|[{X, Y}|Tail]].
+  [Head | [{X, Y} | Tail]].

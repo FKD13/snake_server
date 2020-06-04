@@ -29,11 +29,14 @@ init([]) ->
   ATimer = timer:send_interval(?APPLE_DELAY, spawn_apple),
   {ok, #game_server_state{timers = [ATimer, UTimer], size = {100, 100}}}.
 
+% Mark client as connection. The client_server will be listening for connections so won't reply to call's
 handle_call({connecting, Client}, _, S = #game_server_state{connectingClients = C}) ->
-  {reply, ok, S#game_server_state{connectingClients = [Client|C]}};
+  {reply, ok, S#game_server_state{connectingClients = [Client | C]}};
+% Mark client as connected. The client_server will now be available for requests.
 handle_call({connected, Client}, _, S = #game_server_state{connectingClients = C}) ->
   Clients = lists:filter(fun(A) -> A =/= Client end, C),
   {reply, ok, S#game_server_state{connectingClients = Clients}};
+
 handle_call(start_position, _, State = #game_server_state{size = S}) ->
   {reply, start_position(S), State};
 handle_call(_Request, _From, State = #game_server_state{}) ->
@@ -43,17 +46,40 @@ handle_cast(_Request, State = #game_server_state{}) ->
   {noreply, State}.
 
 %% Update the game
-handle_info(update, State = #game_server_state{connectingClients = Cs}) ->
+handle_info(update, State = #game_server_state{connectingClients = Cs, apples = A}) ->
   Clients = lists:map(fun({_, Pid, _, _}) -> Pid end, client_sup:which_children()) -- Cs,
-  [gen_server:call(C, move) || C <- Clients],
-  [gen_server:cast(C, update) || C <- Clients],
-  {noreply, State};
+  % Eat apple or move
+  EatenApples = lists:flatmap(
+    fun(C) ->
+      case gen_server:call(C, {check_collide, A}) of
+        [] ->
+          gen_server:call(C, move),
+          [];
+        [Point] ->
+          gen_server:call(C, grow),
+          [Point];
+        [Point | Ps] ->
+          gen_server:call(C, grow),
+          [Point | Ps]
+      end
+    end, Clients),
+  NewApples = A -- EatenApples,
+  % Check for collisions
+  % TODO
+  % push update to clients
+  Snakes = [gen_server:call(C, snake) || C <- Clients],
+  [gen_server:cast(C, {update, jsone:encode(
+    #{
+      snakes => Snakes,
+      apples => utils:coords_to_list(NewApples)
+    })}) || C <- Clients],
+  {noreply, State#game_server_state{apples = NewApples}};
 
 %% Spawn an apple
 handle_info(spawn_apple, State = #game_server_state{apples = Apples, size = S}) ->
-  {noreply, State#game_server_state{apples = [start_position(S)|Apples]}};
+  {noreply, State#game_server_state{apples = [start_position(S) | Apples]}};
 
-handle_info(stop, State = #game_server_state{ timers = Timers}) ->
+handle_info(stop, State = #game_server_state{timers = Timers}) ->
   % cancel the timer
   [timer:cancel(T) || T <- Timers],
   {noreply, State};
@@ -71,6 +97,6 @@ code_change(_OldVsn, State = #game_server_state{}, _Extra) ->
 %%%===================================================================
 
 % return a random number between 0 and N exclusive.
-random(N) -> rand:uniform(N+1)-1.
+random(N) -> rand:uniform(N + 1) - 1.
 
 start_position({X, Y}) -> {random(X), random(Y)}.
