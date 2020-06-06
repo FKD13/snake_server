@@ -10,9 +10,10 @@
 -record(client_server_state, {
   listenSocket,
   socket,
-  name,
   directions = {north, undefined},
-  snake = []
+  snake = [],
+  id,
+  score = 0
 }).
 
 %%%===================================================================
@@ -24,13 +25,17 @@ start_link(Socket) ->
 
 init([ListenSocket]) ->
   io:format("INIT CLIENT SERVER! ~p~n", [self()]),
-  {ok, #client_server_state{listenSocket = ListenSocket}}.
+  {ok, #client_server_state{listenSocket = ListenSocket, id = erlang:unique_integer([positive])}}.
 
-%% Check if the head of the snake collides with an apple.
+%% Check if the head of the snake collides with an set of points.
 handle_call({check_collide, Points}, _, State = #client_server_state{snake = S, directions = {D, _}}) ->
   [Head | _] = grow(S, D),
   Collide = lists:filter(fun(A) -> A =:= Head end, Points),
   {reply, Collide, State};
+
+%% Check if the snake is inside the field
+handle_call({check_field, {MAX_X, MAX_Y}}, _, State = #client_server_state{snake = [{X, Y} | _]}) ->
+  {reply, ((MAX_X > X) and (X >= 0)) and ((MAX_Y > Y) and (Y >= 0)), State};
 
 %% Grow the snake in it's direction
 handle_call(grow, _, State = #client_server_state{snake = []}) -> {reply, ok, State};
@@ -44,9 +49,13 @@ handle_call(move, _, State = #client_server_state{directions = {D, _}, snake = S
   Snake = grow(S, D),
   {reply, ok, State#client_server_state{snake = utils:droplast(Snake), directions = {D, D}}};
 
-% get the current snake
-handle_call(snake, _, State = #client_server_state{snake = S}) ->
-  {reply, utils:coords_to_list(S), State};
+%% handle death
+handle_call({die, FieldSize}, _, State) ->
+  {reply, ok, die(State, game_server:start_position(FieldSize))};
+
+%% get the current snake
+handle_call(snake, _, State = #client_server_state{snake = S, id = Id}) ->
+  {reply, #{id => Id, snake => utils:coords_to_list(S)}, State};
 
 %% Generic catchall
 handle_call(_Request, _From, State = #client_server_state{}) ->
@@ -57,6 +66,10 @@ handle_cast({update, _}, State = #client_server_state{socket = undefined}) -> {n
 handle_cast({update, Data}, State = #client_server_state{socket = S, snake = Snake}) ->
   gen_tcp:send(S, Data),
   {noreply, State};
+
+%% update the score
+handle_cast({score, N}, State = #client_server_state{score = S}) when is_integer(N) ->
+  {noreply, State#client_server_state{score = S + N}};
 
 handle_cast(accept, State = #client_server_state{socket = undefined}) ->
   Pid = self(),
@@ -85,7 +98,7 @@ handle_info({tcp, Socket, Data}, State = #client_server_state{directions = {_, P
       "E" -> State;
       "S" when Pd =/= north -> State#client_server_state{directions = {south, Pd}};
       "S" -> State;
-      "W" when Pd =/= east-> State#client_server_state{directions = {west, Pd}};
+      "W" when Pd =/= east -> State#client_server_state{directions = {west, Pd}};
       "W" -> State;
       _ ->
         gen_tcp:send(Socket, jsone:encode(#{error => unsupported_action})),
@@ -122,3 +135,10 @@ grow([{X, Y} | Tail], Direction) ->
       west -> {X - 1, Y}
     end,
   [Head | [{X, Y} | Tail]].
+
+die(State, NewPos) ->
+  State#client_server_state{
+    directions = {north, undefined},
+    score = 0,
+    snake = [NewPos]
+  }.

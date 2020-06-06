@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3, start_position/1]).
 
 -define(SERVER, ?MODULE).
 -define(DELAY, 250). % update the game every second.
@@ -46,7 +46,7 @@ handle_cast(_Request, State = #game_server_state{}) ->
   {noreply, State}.
 
 %% Update the game
-handle_info(update, State = #game_server_state{connectingClients = Cs, apples = A}) ->
+handle_info(update, State = #game_server_state{connectingClients = Cs, apples = A, size = Size}) ->
   Clients = lists:map(fun({_, Pid, _, _}) -> Pid end, client_sup:which_children()) -- Cs,
   % Eat apple or move
   EatenApples = lists:flatmap(
@@ -64,6 +64,14 @@ handle_info(update, State = #game_server_state{connectingClients = Cs, apples = 
       end
     end, Clients),
   NewApples = A -- EatenApples,
+  % Check for field collisions
+  lists:foreach(
+    fun(C) ->
+      case gen_server:call(C, {check_field, Size}) of
+        false -> gen_server:call(C, {die, Size});
+        _ -> ok
+      end
+    end, Clients),
   % Check for collisions
   % TODO
   % push update to clients
