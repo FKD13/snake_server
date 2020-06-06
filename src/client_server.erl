@@ -11,7 +11,7 @@
   listenSocket,
   socket,
   name,
-  direction = north,
+  directions = {north, undefined},
   snake = []
 }).
 
@@ -27,22 +27,22 @@ init([ListenSocket]) ->
   {ok, #client_server_state{listenSocket = ListenSocket}}.
 
 %% Check if the head of the snake collides with an apple.
-handle_call({check_collide, Points}, _, State = #client_server_state{snake = S, direction = D}) ->
+handle_call({check_collide, Points}, _, State = #client_server_state{snake = S, directions = {D, _}}) ->
   [Head | _] = grow(S, D),
   Collide = lists:filter(fun(A) -> A =:= Head end, Points),
   {reply, Collide, State};
 
 %% Grow the snake in it's direction
 handle_call(grow, _, State = #client_server_state{snake = []}) -> {reply, ok, State};
-handle_call(grow, _, State = #client_server_state{direction = D, snake = S}) ->
+handle_call(grow, _, State = #client_server_state{directions = {D, _}, snake = S}) ->
   Snake = grow(S, D),
-  {reply, ok, State#client_server_state{snake = Snake}};
+  {reply, ok, State#client_server_state{snake = Snake, directions = {D, D}}};
 
 %% Move the snake in it's direction
 handle_call(move, _, State = #client_server_state{snake = []}) -> {reply, ok, State};
-handle_call(move, _, State = #client_server_state{direction = D, snake = S}) ->
+handle_call(move, _, State = #client_server_state{directions = {D, _}, snake = S}) ->
   Snake = grow(S, D),
-  {reply, ok, State#client_server_state{snake = utils:droplast(Snake)}};
+  {reply, ok, State#client_server_state{snake = utils:droplast(Snake), directions = {D, D}}};
 
 % get the current snake
 handle_call(snake, _, State = #client_server_state{snake = S}) ->
@@ -75,14 +75,18 @@ handle_cast(_Request, State = #client_server_state{}) ->
   io:format("~p~n", [_Request]),
   {noreply, State}.
 
-handle_info({tcp, Socket, Data}, State = #client_server_state{direction = Direction}) ->
+handle_info({tcp, Socket, Data}, State = #client_server_state{directions = {_, Pd}}) ->
   io:format("~p~n", [Data]),
   NewState =
     case string:trim(Data) of
-      "N" -> State#client_server_state{direction = north};
-      "E" -> State#client_server_state{direction = east};
-      "S" -> State#client_server_state{direction = south};
-      "W" -> State#client_server_state{direction = west};
+      "N" when Pd =/= south -> State#client_server_state{directions = {north, Pd}};
+      "N" -> State;
+      "E" when Pd =/= west -> State#client_server_state{directions = {east, Pd}};
+      "E" -> State;
+      "S" when Pd =/= north -> State#client_server_state{directions = {south, Pd}};
+      "S" -> State;
+      "W" when Pd =/= east-> State#client_server_state{directions = {west, Pd}};
+      "W" -> State;
       _ ->
         gen_tcp:send(Socket, jsone:encode(#{error => unsupported_action})),
         State

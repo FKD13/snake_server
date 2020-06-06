@@ -6,7 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(DELAY, 500). % update the game every second.
+-define(DELAY, 250). % update the game every second.
 -define(APPLE_DELAY, 2000).
 
 -record(game_server_state, {
@@ -27,7 +27,7 @@ init([]) ->
   io:format("INIT GAME SERVER!~n"),
   UTimer = timer:send_interval(?DELAY, update),
   ATimer = timer:send_interval(?APPLE_DELAY, spawn_apple),
-  {ok, #game_server_state{timers = [ATimer, UTimer], size = {100, 100}}}.
+  {ok, #game_server_state{timers = [ATimer, UTimer], size = {40, 40}}}.
 
 % Mark client as connection. The client_server will be listening for connections so won't reply to call's
 handle_call({connecting, Client}, _, S = #game_server_state{connectingClients = C}) ->
