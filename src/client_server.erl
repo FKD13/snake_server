@@ -27,7 +27,8 @@ init([ListenSocket]) ->
   {ok, #client_server_state{listenSocket = ListenSocket}}.
 
 %% Check if the head of the snake collides with an apple.
-handle_call({check_collide, Points}, _, State = #client_server_state{snake = [Head | _]}) ->
+handle_call({check_collide, Points}, _, State = #client_server_state{snake = S, direction = D}) ->
+  [Head | _] = grow(S, D),
   Collide = lists:filter(fun(A) -> A =:= Head end, Points),
   {reply, Collide, State};
 
@@ -74,7 +75,7 @@ handle_cast(_Request, State = #client_server_state{}) ->
   io:format("~p~n", [_Request]),
   {noreply, State}.
 
-handle_info({tcp, Socket, Data}, State) ->
+handle_info({tcp, Socket, Data}, State = #client_server_state{direction = Direction}) ->
   io:format("~p~n", [Data]),
   NewState =
     case string:trim(Data) of

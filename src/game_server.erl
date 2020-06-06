@@ -6,7 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(DELAY, 1000). % update the game every second.
+-define(DELAY, 500). % update the game every second.
 -define(APPLE_DELAY, 2000).
 
 -record(game_server_state, {
