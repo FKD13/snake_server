@@ -6,7 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3, start_position/1]).
 
 -define(SERVER, ?MODULE).
--define(DELAY, 250). % update the game every second.
+-define(DELAY, 10000000). % update the game every second.
 -define(APPLE_DELAY, 2000).
 
 -record(game_server_state, {
@@ -39,6 +39,8 @@ handle_call({connected, Client}, _, S = #game_server_state{connectingClients = C
 
 handle_call(start_position, _, State = #game_server_state{size = S}) ->
   {reply, start_position(S), State};
+handle_call(info, _, State = #game_server_state{size = {X, Y}}) ->
+  {reply, #{info => #{size => [X, Y]}}, State};
 handle_call(_Request, _From, State = #game_server_state{}) ->
   {noreply, State}.
 

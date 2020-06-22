@@ -63,7 +63,7 @@ handle_call(_Request, _From, State = #client_server_state{}) ->
 
 %% Push update to clients
 handle_cast({update, _}, State = #client_server_state{socket = undefined}) -> {noreply, State};
-handle_cast({update, Data}, State = #client_server_state{socket = S, snake = Snake}) ->
+handle_cast({update, Data}, State = #client_server_state{socket = S}) ->
   gen_tcp:send(S, Data),
   {noreply, State};
 
@@ -88,24 +88,24 @@ handle_cast(_Request, State = #client_server_state{}) ->
   io:format("~p~n", [_Request]),
   {noreply, State}.
 
-handle_info({tcp, Socket, Data}, State = #client_server_state{directions = {_, Pd}}) ->
+handle_info({tcp, Socket, Data}, State) ->
   io:format("~p~n", [Data]),
-  NewState =
-    case string:trim(Data) of
-      "N" when Pd =/= south -> State#client_server_state{directions = {north, Pd}};
-      "N" -> State;
-      "E" when Pd =/= west -> State#client_server_state{directions = {east, Pd}};
-      "E" -> State;
-      "S" when Pd =/= north -> State#client_server_state{directions = {south, Pd}};
-      "S" -> State;
-      "W" when Pd =/= east -> State#client_server_state{directions = {west, Pd}};
-      "W" -> State;
-      _ ->
-        gen_tcp:send(Socket, jsone:encode(#{error => unsupported_action})),
-        State
+
+  Response =
+    case jsone:try_decode(list_to_binary(string:trim(Data))) of
+      {ok, Cmd, _} -> handle_cmd(State, Cmd);
+      {error, _} -> {error, 'No valid json'}
     end,
+
+  NState = case Response of
+    {ok, NS, empty} -> NS;
+    {ok, NS, Resp} -> send_response(Socket, Resp), NS;
+    {error, Message} -> send_error(Socket, Message), State;
+    Else -> io:format("Unexpected Response: ~p~n", [Else]), State
+  end,
+
   listen(Socket),
-  {noreply, NewState};
+  {noreply, NState};
 handle_info({tcp_closed, _}, State) -> {stop, normal, State};
 handle_info(_Info, State = #client_server_state{}) ->
   io:format("~p~n", [_Info]),
@@ -142,3 +142,28 @@ die(State, NewPos) ->
     score = 0,
     snake = [NewPos]
   }.
+
+send_error(Socket, Error) ->
+  send_response(Socket, #{error => Error}).
+
+send_response(Socket, Message) ->
+  gen_tcp:send(Socket, jsone:encode(Message)).
+
+handle_cmd(State, #{<<"action">> := <<"info">>}) ->
+  GameServer = snake_server_sup:get_child(game_server),
+  {ok, State, gen_server:call(GameServer, info)};
+handle_cmd(State = #client_server_state{directions = {_, Pd}}, #{<<"action">> := <<"move">>, <<"value">> := V}) ->
+  Value = binary_to_list(V),
+  case Value of
+    "N" when Pd =/= south -> {ok, State#client_server_state{directions = {north, Pd}}, empty};
+    "E" when Pd =/= west -> {ok, State#client_server_state{directions = {east, Pd}}, empty};
+    "S" when Pd =/= north -> {ok, State#client_server_state{directions = {south, Pd}}, empty};
+    "W" when Pd =/= east -> {ok, State#client_server_state{directions = {west, Pd}}, empty};
+    "N" -> {ok, State, empty};
+    "E" -> {ok, State, empty};
+    "S" -> {ok, State, empty};
+    "W" -> {ok, State, empty};
+    _ -> {error, 'Invalid direction'}
+  end;
+handle_cmd(_, _) ->
+  {error, 'Unexpected action'}.
